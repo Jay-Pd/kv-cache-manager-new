@@ -87,7 +87,7 @@ type FetchChatTemplateResponse struct {
 	ChatTemplateKWArgs map[string]interface{} `json:"chat_template_kwargs,omitempty"`
 }
 
-// ChatTemplatingProcessor is a processor that handles chat template rendering
+// ChatTemplatingProcessor handles chat template rendering.
 type ChatTemplatingProcessor struct{}
 
 // NewChatTemplatingProcessor creates a new instance of ChatTemplatingProcessor.
@@ -95,44 +95,57 @@ func NewChatTemplatingProcessor() *ChatTemplatingProcessor {
 	return &ChatTemplatingProcessor{}
 }
 
-// logMem logs the current memory usage
+// logMem logs Go heap, Python, and tracked C allocations.
 func logMem(ctx context.Context, label string) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
+
+	// Python memory
+	var pyAlloc C.size_t
+	if C.Py_IsInitialized() != 0 {
+		pyAlloc = C.PyMem_GetAllocated()
+	}
+
+	// Tracked C allocations
+	cAlloc := C.get_c_allocated_bytes()
+
 	traceLogger := log.FromContext(ctx).V(logging.DEBUG).WithName("MemoryStats")
 	traceLogger.Info(label,
-		"Alloc", m.Alloc,
-		"TotalAlloc", m.TotalAlloc,
-		"Sys", m.Sys,
-		"NumGC", m.NumGC,
+		"GoAlloc", m.Alloc,
+		"GoTotalAlloc", m.TotalAlloc,
+		"GoSys", m.Sys,
+		"GoNumGC", m.NumGC,
+		"PythonAlloc", pyAlloc,
+		"CAlloc", cAlloc,
 	)
 }
 
 // Initialize initializes the Python interpreter and caches the module.
 func (w *ChatTemplatingProcessor) Initialize() error {
+	ctx := context.Background()
 	fmt.Println("Initialize called")
-	logMem(context.Background(), "Before Initialize")
+	logMem(ctx, "Before Initialize")
 
 	C.Py_InitializeGo()
-
 	result := C.Py_InitChatTemplateModule()
 	if result != 0 {
 		return fmt.Errorf("failed to initialize chat template module")
 	}
 
-	logMem(context.Background(), "After Initialize")
+	logMem(ctx, "After Initialize")
 	return nil
 }
 
 // Finalize finalizes the Python interpreter and cleans up the module.
 func (w *ChatTemplatingProcessor) Finalize() {
+	ctx := context.Background()
 	fmt.Println("Finalize called")
-	logMem(context.Background(), "Before Finalize")
+	logMem(ctx, "Before Finalize")
 
 	C.Py_CleanupChatTemplateModule()
 	C.Py_FinalizeGo()
 
-	logMem(context.Background(), "After Finalize")
+	logMem(ctx, "After Finalize")
 }
 
 // RenderChatTemplate renders a chat template using the cached Python function.
@@ -152,7 +165,11 @@ func (w *ChatTemplatingProcessor) RenderChatTemplate(ctx context.Context,
 	}
 
 	cReqJSON := C.CString(string(reqJSON))
-	defer C.free(unsafe.Pointer(cReqJSON))
+	C.g_c_alloc_bytes += C.size_t(len(reqJSON)) // track allocation
+	defer func() {
+		C.free(unsafe.Pointer(cReqJSON))
+		C.g_c_alloc_bytes -= C.size_t(len(reqJSON)) // track free
+	}()
 
 	cResult := C.Py_CallRenderJinjaTemplate(cReqJSON)
 	if cResult == nil {
@@ -161,7 +178,6 @@ func (w *ChatTemplatingProcessor) RenderChatTemplate(ctx context.Context,
 	defer C.free(unsafe.Pointer(cResult))
 
 	resultJSON := C.GoString(cResult)
-
 	var response RenderJinjaTemplateResponse
 	if err := json.Unmarshal([]byte(resultJSON), &response); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
@@ -185,7 +201,11 @@ func (w *ChatTemplatingProcessor) FetchChatTemplate(
 	}
 
 	cReqJSON := C.CString(string(reqJSON))
-	defer C.free(unsafe.Pointer(cReqJSON))
+	C.g_c_alloc_bytes += C.size_t(len(reqJSON))
+	defer func() {
+		C.free(unsafe.Pointer(cReqJSON))
+		C.g_c_alloc_bytes -= C.size_t(len(reqJSON))
+	}()
 
 	cResult := C.Py_CallGetModelChatTemplate(cReqJSON)
 	if cResult == nil {
@@ -194,7 +214,6 @@ func (w *ChatTemplatingProcessor) FetchChatTemplate(
 	defer C.free(unsafe.Pointer(cResult))
 
 	resultJSON := C.GoString(cResult)
-
 	var response FetchChatTemplateResponse
 	if err := json.Unmarshal([]byte(resultJSON), &response); err != nil {
 		return "", nil, fmt.Errorf("failed to unmarshal response: %w", err)
