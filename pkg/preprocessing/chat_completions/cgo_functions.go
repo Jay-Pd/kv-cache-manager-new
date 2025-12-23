@@ -101,14 +101,6 @@ func logMem(ctx context.Context, label string) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
-	// Python memory (only if initialized)
-	var pyAlloc C.size_t
-	if C.Py_IsInitialized() != 0 {
-		pyAlloc = C.get_python_allocated() // Python 3.8+
-	} else {
-		pyAlloc = 0
-	}
-
 	// Tracked C allocations
 	cAlloc := C.get_c_allocated_bytes()
 
@@ -118,7 +110,6 @@ func logMem(ctx context.Context, label string) {
 		"GoTotalAlloc", m.TotalAlloc,
 		"GoSys", m.Sys,
 		"GoNumGC", m.NumGC,
-		"PythonAlloc", pyAlloc,
 		"CAlloc", cAlloc,
 	)
 }
