@@ -134,7 +134,7 @@ func (w *ChatTemplatingProcessor) Finalize() {
 func (w *ChatTemplatingProcessor) RenderChatTemplate(ctx context.Context,
 	req *RenderJinjaTemplateRequest,
 ) (*RenderJinjaTemplateResponse, error) {
-	traceLogger := log.FromContext(ctx).V(logging.TRACE).WithName("RenderChatTemplate")
+	traceLogger := log.FromContext(ctx).V(logging.DEBUG).WithName("RenderChatTemplate")
 	if req == nil {
 		traceLogger.Error(nil, "Received nil request")
 		return nil, fmt.Errorf("received nil request")
@@ -175,7 +175,7 @@ func (w *ChatTemplatingProcessor) FetchChatTemplate(
 	ctx context.Context,
 	req FetchChatTemplateRequest,
 ) (string, map[string]interface{}, error) {
-	traceLogger := log.FromContext(ctx).V(logging.TRACE).WithName("FetchChatTemplate")
+	traceLogger := log.FromContext(ctx).V(logging.DEBUG).WithName("FetchChatTemplate")
 
 	// Convert request to JSON
 	reqJSON, err := json.Marshal(req)
@@ -201,7 +201,6 @@ func (w *ChatTemplatingProcessor) FetchChatTemplate(
 		traceLogger.Error(err, "Failed to unmarshal response")
 		return "", nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
-
 	return response.ChatTemplate, response.ChatTemplateKWArgs, nil
 }
 
