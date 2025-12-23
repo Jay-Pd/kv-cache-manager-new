@@ -135,6 +135,7 @@ func (w *ChatTemplatingProcessor) RenderChatTemplate(ctx context.Context,
 	req *RenderJinjaTemplateRequest,
 ) (*RenderJinjaTemplateResponse, error) {
 	traceLogger := log.FromContext(ctx).V(logging.DEBUG).WithName("RenderChatTemplate")
+	fmt.Println("RenderChatTemplate called")
 	if req == nil {
 		traceLogger.Error(nil, "Received nil request")
 		return nil, fmt.Errorf("received nil request")
@@ -176,7 +177,7 @@ func (w *ChatTemplatingProcessor) FetchChatTemplate(
 	req FetchChatTemplateRequest,
 ) (string, map[string]interface{}, error) {
 	traceLogger := log.FromContext(ctx).V(logging.DEBUG).WithName("FetchChatTemplate")
-
+	fmt.Println("FetchChatTemplate called")
 	// Convert request to JSON
 	reqJSON, err := json.Marshal(req)
 	if err != nil {
