@@ -25,6 +25,7 @@ import (
 	"unsafe"
 
 	/*
+		#include <Python.h>
 		#include "cgo_functions.h"
 	*/
 	"C"
@@ -100,10 +101,12 @@ func logMem(ctx context.Context, label string) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
-	// Python memory
+	// Python memory (only if initialized)
 	var pyAlloc C.size_t
 	if C.Py_IsInitialized() != 0 {
-		pyAlloc = C.PyMem_GetAllocated()
+		pyAlloc = C.PyMem_GetAllocated() // Python 3.8+
+	} else {
+		pyAlloc = 0
 	}
 
 	// Tracked C allocations
@@ -164,12 +167,8 @@ func (w *ChatTemplatingProcessor) RenderChatTemplate(ctx context.Context,
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	cReqJSON := C.CString(string(reqJSON))
-	C.g_c_alloc_bytes += C.size_t(len(reqJSON)) // track allocation
-	defer func() {
-		C.free(unsafe.Pointer(cReqJSON))
-		C.g_c_alloc_bytes -= C.size_t(len(reqJSON)) // track free
-	}()
+	cReqJSON := C.my_malloc_string(C.CString(string(reqJSON)))
+	defer C.my_free_string(cReqJSON, C.size_t(len(reqJSON)))
 
 	cResult := C.Py_CallRenderJinjaTemplate(cReqJSON)
 	if cResult == nil {
@@ -200,12 +199,8 @@ func (w *ChatTemplatingProcessor) FetchChatTemplate(
 		return "", nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	cReqJSON := C.CString(string(reqJSON))
-	C.g_c_alloc_bytes += C.size_t(len(reqJSON))
-	defer func() {
-		C.free(unsafe.Pointer(cReqJSON))
-		C.g_c_alloc_bytes -= C.size_t(len(reqJSON))
-	}()
+	cReqJSON := C.my_malloc_string(C.CString(string(reqJSON)))
+	defer C.my_free_string(cReqJSON, C.size_t(len(reqJSON)))
 
 	cResult := C.Py_CallGetModelChatTemplate(cReqJSON)
 	if cResult == nil {
