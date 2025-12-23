@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-	http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,6 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package preprocessing
 
 //nolint: gocritic // C and unsafe are considered dups by the linter.
@@ -86,7 +87,7 @@ type FetchChatTemplateResponse struct {
 	ChatTemplateKWArgs map[string]interface{} `json:"chat_template_kwargs,omitempty"`
 }
 
-// ChatTemplatingProcessor handles chat template rendering
+// ChatTemplatingProcessor is a processor that handles chat template rendering
 type ChatTemplatingProcessor struct{}
 
 // NewChatTemplatingProcessor creates a new instance of ChatTemplatingProcessor.
@@ -94,8 +95,8 @@ func NewChatTemplatingProcessor() *ChatTemplatingProcessor {
 	return &ChatTemplatingProcessor{}
 }
 
-// printMemStats prints Go memory usage
-func printMemStats(ctx context.Context, label string) {
+// logMem logs the current memory usage
+func logMem(ctx context.Context, label string) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	traceLogger := log.FromContext(ctx).V(logging.TRACE).WithName("MemoryStats")
@@ -108,83 +109,65 @@ func printMemStats(ctx context.Context, label string) {
 }
 
 // Initialize initializes the Python interpreter and caches the module.
-func (w *ChatTemplatingProcessor) Initialize(ctx context.Context) error {
-	traceLogger := log.FromContext(ctx).V(logging.DEBUG).WithName("Initialize")
-	traceLogger.Info("Initializing Python interpreter")
-	printMemStats(ctx, "Before Python Initialize")
+func (w *ChatTemplatingProcessor) Initialize() error {
+	fmt.Println("Initialize called")
+	logMem(context.Background(), "Before Initialize")
 
 	C.Py_InitializeGo()
 
 	result := C.Py_InitChatTemplateModule()
 	if result != 0 {
-		traceLogger.Error(nil, "Failed to initialize chat template module")
 		return fmt.Errorf("failed to initialize chat template module")
 	}
 
-	printMemStats(ctx, "After Python Initialize")
-	traceLogger.Info("Python interpreter initialized successfully")
+	logMem(context.Background(), "After Initialize")
 	return nil
 }
 
 // Finalize finalizes the Python interpreter and cleans up the module.
-func (w *ChatTemplatingProcessor) Finalize(ctx context.Context) {
-	traceLogger := log.FromContext(ctx).V(logging.DEBUG).WithName("Finalize")
-	traceLogger.Info("Finalizing Python interpreter")
-	printMemStats(ctx, "Before Python Finalize")
+func (w *ChatTemplatingProcessor) Finalize() {
+	fmt.Println("Finalize called")
+	logMem(context.Background(), "Before Finalize")
 
 	C.Py_CleanupChatTemplateModule()
 	C.Py_FinalizeGo()
 
-	printMemStats(ctx, "After Python Finalize")
-	traceLogger.Info("Python interpreter finalized successfully")
+	logMem(context.Background(), "After Finalize")
 }
 
 // RenderChatTemplate renders a chat template using the cached Python function.
 func (w *ChatTemplatingProcessor) RenderChatTemplate(ctx context.Context,
 	req *RenderJinjaTemplateRequest,
 ) (*RenderJinjaTemplateResponse, error) {
-	traceLogger := log.FromContext(ctx).V(logging.DEBUG).WithName("RenderChatTemplate")
-	traceLogger.Info("RenderChatTemplate called")
-	printMemStats(ctx, "Before RenderChatTemplate")
+	fmt.Println("RenderChatTemplate called")
+	logMem(ctx, "Before RenderChatTemplate")
 
 	if req == nil {
-		traceLogger.Error(nil, "Received nil request")
 		return nil, fmt.Errorf("received nil request")
 	}
 
 	reqJSON, err := json.Marshal(req)
 	if err != nil {
-		traceLogger.Error(err, "Failed to marshal request")
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	cReqJSON := C.CString(string(reqJSON))
-	traceLogger.Info("Allocated C string for request", "bytes", len(reqJSON))
-	defer func() {
-		C.free(unsafe.Pointer(cReqJSON))
-		traceLogger.Info("Freed C string for request")
-	}()
+	defer C.free(unsafe.Pointer(cReqJSON))
 
 	cResult := C.Py_CallRenderJinjaTemplate(cReqJSON)
 	if cResult == nil {
-		traceLogger.Error(nil, "C function returned nil")
 		return nil, fmt.Errorf("python render_jinja_template failed")
 	}
-	defer func() {
-		C.free(unsafe.Pointer(cResult))
-		traceLogger.Info("Freed C string result from Python")
-	}()
+	defer C.free(unsafe.Pointer(cResult))
 
 	resultJSON := C.GoString(cResult)
-	traceLogger.Info("Received JSON from Python", "length", len(resultJSON))
 
 	var response RenderJinjaTemplateResponse
 	if err := json.Unmarshal([]byte(resultJSON), &response); err != nil {
-		traceLogger.Error(err, "Failed to unmarshal response")
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	printMemStats(ctx, "After RenderChatTemplate")
+	logMem(ctx, "After RenderChatTemplate")
 	return &response, nil
 }
 
@@ -193,60 +176,45 @@ func (w *ChatTemplatingProcessor) FetchChatTemplate(
 	ctx context.Context,
 	req FetchChatTemplateRequest,
 ) (string, map[string]interface{}, error) {
-	traceLogger := log.FromContext(ctx).V(logging.DEBUG).WithName("FetchChatTemplate")
-	traceLogger.Info("FetchChatTemplate called")
-	printMemStats(ctx, "Before FetchChatTemplate")
+	fmt.Println("FetchChatTemplate called")
+	logMem(ctx, "Before FetchChatTemplate")
 
 	reqJSON, err := json.Marshal(req)
 	if err != nil {
-		traceLogger.Error(err, "Failed to marshal request")
 		return "", nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	cReqJSON := C.CString(string(reqJSON))
-	traceLogger.Info("Allocated C string for request", "bytes", len(reqJSON))
-	defer func() {
-		C.free(unsafe.Pointer(cReqJSON))
-		traceLogger.Info("Freed C string for request")
-	}()
+	defer C.free(unsafe.Pointer(cReqJSON))
 
 	cResult := C.Py_CallGetModelChatTemplate(cReqJSON)
 	if cResult == nil {
-		traceLogger.Error(nil, "C function returned nil")
 		return "", nil, fmt.Errorf("python get_model_chat_template failed")
 	}
-	defer func() {
-		C.free(unsafe.Pointer(cResult))
-		traceLogger.Info("Freed C string result from Python")
-	}()
+	defer C.free(unsafe.Pointer(cResult))
 
 	resultJSON := C.GoString(cResult)
-	traceLogger.Info("Received JSON from Python", "length", len(resultJSON))
 
 	var response FetchChatTemplateResponse
 	if err := json.Unmarshal([]byte(resultJSON), &response); err != nil {
-		traceLogger.Error(err, "Failed to unmarshal response")
 		return "", nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	printMemStats(ctx, "After FetchChatTemplate")
+	logMem(ctx, "After FetchChatTemplate")
 	return response.ChatTemplate, response.ChatTemplateKWArgs, nil
 }
 
 // ClearCaches clears all caches for testing purposes.
 func ClearCaches(ctx context.Context) error {
-	traceLogger := log.FromContext(ctx).V(logging.TRACE).WithName("ClearCaches")
-	traceLogger.Info("ClearCaches called")
-	printMemStats(ctx, "Before ClearCaches")
+	fmt.Println("ClearCaches called")
+	logMem(ctx, "Before ClearCaches")
 
 	cResult := C.Py_ClearCaches()
 	if cResult == nil {
-		traceLogger.Error(nil, "Failed to clear caches")
 		return fmt.Errorf("failed to clear caches")
 	}
 	defer C.free(unsafe.Pointer(cResult))
 
-	printMemStats(ctx, "After ClearCaches")
-	traceLogger.Info("Caches cleared successfully")
+	logMem(ctx, "After ClearCaches")
 	return nil
 }
