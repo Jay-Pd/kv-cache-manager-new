@@ -20,6 +20,8 @@ limitations under the License.
 #include <Python.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <stddef.h>
 
 // === FUNCTION DECLARATIONS ===
 
@@ -74,5 +76,30 @@ void Py_CleanupChatTemplateModule();
 
 // Re-initialize Python interpreter state
 int Py_ReinitializeGo();
+
+
+static size_t g_c_alloc_bytes = 0;
+
+char* my_malloc_string(const char* s) {
+    size_t len = strlen(s) + 1;
+    char* ptr = (char*)malloc(len);
+    if (ptr) {
+        memcpy(ptr, s, len);
+        g_c_alloc_bytes += len;
+    }
+    return ptr;
+}
+
+void my_free_string(char* ptr, size_t len) {
+    if (ptr) {
+        free(ptr);
+        g_c_alloc_bytes -= len;
+    }
+}
+
+size_t get_c_allocated_bytes() {
+    return g_c_alloc_bytes;
+}
+
 
 #endif // CGO_FUNCTIONS_H 
