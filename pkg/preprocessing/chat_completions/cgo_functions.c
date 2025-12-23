@@ -15,7 +15,8 @@ limitations under the License.
 */
 
 #include <unistd.h> // for getpid() and usleep()
-
+#include <stdlib.h>
+#include <string.h>
 #include "cgo_functions.h"
 
 // Global variables for caching
@@ -512,4 +513,28 @@ int Py_ReinitializeGo() {
     }
     
     return 0;
+}
+
+
+static size_t g_c_alloc_bytes = 0;
+
+char* my_malloc_string(const char* s) {
+    size_t len = strlen(s) + 1;
+    char* ptr = (char*)malloc(len);
+    if (ptr) {
+        memcpy(ptr, s, len);
+        g_c_alloc_bytes += len;
+    }
+    return ptr;
+}
+
+void my_free_string(char* ptr, size_t len) {
+    if (ptr) {
+        free(ptr);
+        g_c_alloc_bytes -= len;
+    }
+}
+
+size_t get_c_allocated_bytes() {
+    return g_c_alloc_bytes;
 }
