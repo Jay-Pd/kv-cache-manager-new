@@ -99,7 +99,7 @@ func NewChatTemplatingProcessor() *ChatTemplatingProcessor {
 func logMem(ctx context.Context, label string) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	traceLogger := log.FromContext(ctx).V(logging.TRACE).WithName("MemoryStats")
+	traceLogger := log.FromContext(ctx).V(logging.DEBUG).WithName("MemoryStats")
 	traceLogger.Info(label,
 		"Alloc", m.Alloc,
 		"TotalAlloc", m.TotalAlloc,
