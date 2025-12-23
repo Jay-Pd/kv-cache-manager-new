@@ -110,6 +110,16 @@ void Py_FinalizeGo() {
         g_chat_template_module = NULL;
     }
     
+    // Free thread locks
+    if (g_init_lock) {
+        PyThread_free_lock(g_init_lock);
+        g_init_lock = NULL;
+    }
+    if (g_python_init_lock) {
+        PyThread_free_lock(g_python_init_lock);
+        g_python_init_lock = NULL;
+    }
+    
     // Reset state without finalizing Python
     // Python will be cleaned up when the process exits
     g_python_initialized = 0;
@@ -191,6 +201,8 @@ int Py_InitChatTemplateModule() {
     PyObject* module_dict = PyModule_GetDict(g_chat_template_module);
     if (!module_dict) {
         printf("[C] Py_InitChatTemplateModule ERROR - Failed to get module dictionary\n");
+        Py_DECREF(g_chat_template_module);
+        g_chat_template_module = NULL;
         PyGILState_Release(gil_state);
         PyThread_release_lock(g_init_lock);
         return -1;
@@ -200,6 +212,9 @@ int Py_InitChatTemplateModule() {
     g_render_jinja_template_func = PyDict_GetItemString(module_dict, "render_jinja_template");
     if (!g_render_jinja_template_func || !PyCallable_Check(g_render_jinja_template_func)) {
         printf("[C] Py_InitChatTemplateModule ERROR - render_jinja_template function not found or not callable\n");
+        Py_DECREF(g_chat_template_module);
+        g_chat_template_module = NULL;
+        g_render_jinja_template_func = NULL;
         PyGILState_Release(gil_state);
         PyThread_release_lock(g_init_lock);
         return -1;
@@ -210,6 +225,11 @@ int Py_InitChatTemplateModule() {
     g_get_model_chat_template_func = PyDict_GetItemString(module_dict, "get_model_chat_template");
     if (!g_get_model_chat_template_func || !PyCallable_Check(g_get_model_chat_template_func)) {
         printf("[C] Py_InitChatTemplateModule ERROR - get_model_chat_template function not found or not callable\n");
+        Py_DECREF(g_render_jinja_template_func);
+        g_render_jinja_template_func = NULL;
+        Py_DECREF(g_chat_template_module);
+        g_chat_template_module = NULL;
+        g_get_model_chat_template_func = NULL;
         PyGILState_Release(gil_state);
         PyThread_release_lock(g_init_lock);
         return -1;
@@ -321,17 +341,9 @@ char* Py_CallGetModelChatTemplateInternal(const char* json_request) {
         return NULL;
     }
     
-    // Validate cached function
+    // Validate cached function pointer (basic NULL check before GIL)
     if (!g_get_model_chat_template_func) {
         printf("[C] Py_CallGetModelChatTemplateInternal ERROR - Cached function is NULL\n");
-        fflush(stdout);
-        return NULL;
-    }
-    
-    // Validate that the cached function is still a valid Python object
-    fflush(stdout);
-    if (!PyCallable_Check(g_get_model_chat_template_func)) {
-        printf("[C] Py_CallGetModelChatTemplateInternal ERROR - Cached function is not callable (corrupted?)\n");
         fflush(stdout);
         return NULL;
     }
@@ -345,6 +357,14 @@ char* Py_CallGetModelChatTemplateInternal(const char* json_request) {
     
     // Acquire GIL for Python operations
     PyGILState_STATE gil_state = PyGILState_Ensure();
+    
+    // Validate that the cached function is still a valid Python object (must be done with GIL held)
+    if (!PyCallable_Check(g_get_model_chat_template_func)) {
+        printf("[C] Py_CallGetModelChatTemplateInternal ERROR - Cached function is not callable (corrupted?)\n");
+        fflush(stdout);
+        PyGILState_Release(gil_state);
+        return NULL;
+    }
     
     // Create Python string from JSON request
     PyObject* py_json = PyUnicode_FromString(json_request);
@@ -454,24 +474,29 @@ void Py_CleanupChatTemplateModule() {
 
 // Re-initialize Python interpreter state
 int Py_ReinitializeGo() {    
-    // Reset global flags
+    // Clean up cached objects with GIL held
+    if (Py_IsInitialized()) {
+        PyGILState_STATE gil_state = PyGILState_Ensure();
+        if (g_render_jinja_template_func) {
+            Py_DECREF(g_render_jinja_template_func);
+            g_render_jinja_template_func = NULL;
+        }
+        if (g_get_model_chat_template_func) {
+            Py_DECREF(g_get_model_chat_template_func);
+            g_get_model_chat_template_func = NULL;
+        }
+        if (g_chat_template_module) {
+            Py_DECREF(g_chat_template_module);
+            g_chat_template_module = NULL;
+        }
+        PyGILState_Release(gil_state);
+    }
+    
+    // Reset global flags after cleanup
     g_initialized = 0;
     g_python_initialized = 0;
     g_process_initialized = 0;
-    
-    // Clean up cached objects
-    if (g_render_jinja_template_func) {
-        Py_DECREF(g_render_jinja_template_func);
-        g_render_jinja_template_func = NULL;
-    }
-    if (g_get_model_chat_template_func) {
-        Py_DECREF(g_get_model_chat_template_func);
-        g_get_model_chat_template_func = NULL;
-    }
-    if (g_chat_template_module) {
-        Py_DECREF(g_chat_template_module);
-        g_chat_template_module = NULL;
-    }
+    g_finalized = 0;
         
     // Re-initialize
     int result = Py_InitializeGo();
