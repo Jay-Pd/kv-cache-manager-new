@@ -104,7 +104,7 @@ func logMem(ctx context.Context, label string) {
 	// Python memory (only if initialized)
 	var pyAlloc C.size_t
 	if C.Py_IsInitialized() != 0 {
-		pyAlloc = C.PyMem_GetAllocated() // Python 3.8+
+		pyAlloc = C.get_python_allocated() // Python 3.8+
 	} else {
 		pyAlloc = 0
 	}
