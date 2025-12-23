@@ -23,6 +23,13 @@ limitations under the License.
 #include <string.h>
 #include <stddef.h>
 
+size_t get_python_allocated() {
+#if PY_VERSION_HEX >= 0x03080000
+    return PyMem_GetAllocated();
+#else
+    return 0;
+#endif
+}
 // === FUNCTION DECLARATIONS ===
 
 // Initialize Python interpreter
